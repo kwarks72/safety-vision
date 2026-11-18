@@ -1,0 +1,18 @@
+# 비밀 정보 (절대 올리면 안 됨)
+.env
+
+# 가상환경·캐시
+.venv/
+__pycache__/
+*.pyc
+
+# 실행하면 생기는 파일들
+uploads/
+samples/
+runs/
+safety.db
+rag_index/
+
+# 용량 큰 모델 파일 (README에 받는 방법 안내)
+models/
+*.pt

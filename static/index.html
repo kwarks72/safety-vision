@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>safety-vision 안전 대시보드</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Malgun Gothic", sans-serif; background: #f3f5f9; color: #1f2937; }
+    header { background: #1e3a8a; color: #fff; padding: 20px 32px; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 4px 0 0; font-size: 13px; opacity: .8; }
+    main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+
+    #alertCard { display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d;
+      border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; }
+    #alertCard .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    #alertCard h3 { margin: 0; font-size: 16px; }
+    #alertCard p { margin: 8px 0 0; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+    #alertClose { background: transparent; color: #7f1d1d; border: 1px solid #fca5a5; padding: 4px 12px; }
+
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .card .label { font-size: 13px; color: #6b7280; }
+    .card .value { font-size: 30px; font-weight: 700; margin-top: 6px; }
+    .card.danger .value { color: #dc2626; }
+    .panel { background: #fff; border-radius: 12px; padding: 18px; margin-top: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .panel h2 { margin: 0 0 12px; font-size: 16px; }
+    .upload { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    button { background: #1e3a8a; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; font-size: 14px; }
+    button:disabled { opacity: .5; cursor: wait; }
+    #msg { font-size: 14px; color: #374151; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .chips button { background: #eef2ff; color: #1e3a8a; padding: 6px 14px; font-size: 13px; }
+    #chatBox { min-height: 120px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 10px; padding: 4px 0 12px; }
+    .msg { padding: 10px 14px; border-radius: 12px; max-width: 85%; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+    .msg.q { align-self: flex-end; background: #dbeafe; color: #1e3a8a; }
+    .msg.a { align-self: flex-start; background: #f3f4f6; }
+    .msg.hint { align-self: flex-start; background: #f3f4f6; color: #6b7280; }
+    .chatRow { display: flex; gap: 8px; }
+    .chatRow input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+    #chatErr { color: #dc2626; font-size: 13px; min-height: 18px; margin: 6px 0 0; }
+    .note { font-size: 12px; color: #6b7280; margin: 6px 0 0; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+    th { color: #6b7280; font-weight: 600; }
+    .badge { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .badge.ok { background: #dcfce7; color: #166534; }
+    .badge.violation { background: #fee2e2; color: #991b1b; }
+    img.thumb { height: 64px; border-radius: 6px; cursor: pointer; }
+    @media (max-width: 700px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>safety-vision 안전 대시보드</h1>
+    <p>AI가 작업 현장 사진·영상에서 안전모 미착용을 감지합니다</p>
+  </header>
+
+  <main>
+    <section id="alertCard">
+      <div class="top">
+        <h3 id="alertTitle"></h3>
+        <button id="alertClose">닫기</button>
+      </div>
+      <p id="alertGuide">관련 규정을 불러오는 중입니다…</p>
+    </section>
+
+    <section class="cards">
+      <div class="card"><div class="label">총 분석 건수</div><div class="value" id="totalCases">-</div></div>
+      <div class="card"><div class="label">안전모 착용 인원</div><div class="value" id="helmet">-</div></div>
+      <div class="card danger"><div class="label">미착용(위반) 인원</div><div class="value" id="violations">-</div></div>
+      <div class="card danger"><div class="label">위반율</div><div class="value" id="rate">-</div></div>
+    </section>
+
+    <section class="panel">
+      <h2>사진·영상 올려서 분석하기</h2>
+      <div class="upload">
+        <input type="file" id="fileInput" accept="image/*,video/*">
+        <button id="uploadBtn">분석하기</button>
+        <span id="msg"></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>산업안전 규정 챗봇</h2>
+      <div class="chips">
+        <button class="chip" data-q="안전모는 어떤 작업에서 착용해야 해?">안전모 착용 작업</button>
+        <button class="chip" data-q="높은 곳에서 작업할 때 필요한 보호구는?">높은 곳 보호구</button>
+        <button class="chip" data-q="근로자가 보호구를 안 쓰면 처벌받아?">미착용 처벌</button>
+      </div>
+      <div id="chatBox"><div class="msg hint">질문을 눌러 보거나 직접 입력해 보세요.</div></div>
+      <div class="chatRow">
+        <input id="chatInput" type="text" placeholder="예: 안전대는 언제 착용해야 해?">
+        <button id="chatSend">보내기</button>
+      </div>
+      <p id="chatErr"></p>
+      <p class="note">산업안전보건기준에 관한 규칙 등 공개 법령을 근거로 답하는 참고용 안내이며 법률 자문이 아닙니다.</p>
+    </section>
+
+    <section class="panel">
+      <h2>최근 분석 기록</h2>
+      <table>
+        <thead>
+          <tr><th>시간</th><th>파일</th><th>착용</th><th>미착용</th><th>상태</th><th>결과 사진</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    function esc(text) {
+      const d = document.createElement("div");
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    async function loadStats() {
+      const s = await (await fetch("/stats")).json();
+      document.getElementById("totalCases").textContent = s.total_cases;
+      document.getElementById("helmet").textContent = s.helmet;
+      document.getElementById("violations").textContent = s.violations;
+      document.getElementById("rate").textContent = s.violation_rate + "%";
+    }
+
+    // ---------- 위반 알림 + 관련 규정 자동 안내 ----------
+    let lastId = null;
+    let guideText = null;
+
+    function beep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        o.connect(ctx.destination);
+        o.frequency.value = 880;
+        o.start();
+        setTimeout(() => { o.stop(); ctx.close(); }, 400);
+      } catch (e) {}
+    }
+
+    async function showViolation(fresh) {
+      const total = fresh.reduce((sum, r) => sum + r.violations, 0);
+      document.getElementById("alertTitle").textContent =
+        `안전모 미착용 감지 — 새 위반 ${fresh.length}건 (${total}명)`;
+      const guideEl = document.getElementById("alertGuide");
+      document.getElementById("alertCard").style.display = "block";
+      beep();
+      if (guideText === null) {
+        guideEl.textContent = "관련 규정을 불러오는 중입니다…";
+        try {
+          const res = await fetch("/guide");
+          const data = await res.json();
+          guideText = res.ok ? data.answer : (data.detail || "관련 규정을 불러오지 못했습니다.");
+        } catch (e) {
+          guideText = "관련 규정을 불러오지 못했습니다.";
+        }
+      }
+      guideEl.textContent = guideText;
+    }
+
+    document.getElementById("alertClose").addEventListener("click", () => {
+      document.getElementById("alertCard").style.display = "none";
+    });
+
+    async function loadRecords() {
+      const list = await (await fetch("/records")).json();
+
+      if (lastId !== null) {
+        const fresh = list.filter(r => r.id > lastId && r.status === "violation");
+        if (fresh.length) showViolation(fresh);
+      }
+      lastId = list.length ? list[0].id : 0;
+
+      const rows = document.getElementById("rows");
+      rows.innerHTML = list.map(r => {
+        const img = "/" + r.result_image.replaceAll("\\", "/");
+        const isViolation = r.status === "violation";
+        return `<tr>
+          <td>${esc(r.created_at)}</td>
+          <td>${esc(r.filename)}</td>
+          <td>${r.helmet}</td>
+          <td>${r.violations}</td>
+          <td><span class="badge ${isViolation ? "violation" : "ok"}">${isViolation ? "위반" : "정상"}</span></td>
+          <td><a href="${img}" target="_blank"><img class="thumb" src="${img}"></a></td>
+        </tr>`;
+      }).join("");
+    }
+
+    async function refresh() {
+      await Promise.all([loadStats(), loadRecords()]);
+    }
+
+    // ---------- 사진·영상 업로드 ----------
+    document.getElementById("uploadBtn").addEventListener("click", async () => {
+      const file = document.getElementById("fileInput").files[0];
+      const msg = document.getElementById("msg");
+      const btn = document.getElementById("uploadBtn");
+      if (!file) { msg.textContent = "사진 또는 영상을 먼저 선택해 주세요."; return; }
+
+      btn.disabled = true;
+      msg.textContent = "AI가 분석 중입니다... (영상은 20~30초 걸릴 수 있어요)";
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        const isVideo = file.type.startsWith("video/");
+        const res = await fetch(isVideo ? "/analyze-video" : "/analyze", { method: "POST", body: form });
+        const data = await res.json();
+        if (isVideo) {
+          msg.textContent = data.violation_frames > 0
+            ? `영상 분석 완료: ${data.frames_checked}장면 중 ${data.violation_frames}장면에서 위반 감지 (최대 ${data.max_violations}명)`
+            : `영상 분석 완료: ${data.frames_checked}장면 모두 정상입니다.`;
+        } else {
+          msg.textContent = data.status === "violation"
+            ? `위반 감지! 미착용 ${data.violations}명`
+            : `정상입니다. 착용 ${data.helmet}명`;
+        }
+        await refresh();
+      } catch (e) {
+        msg.textContent = "분석 중 오류가 발생했습니다.";
+      }
+      btn.disabled = false;
+    });
+
+    // ---------- 챗봇 ----------
+    const chatBox = document.getElementById("chatBox");
+    const chatInput = document.getElementById("chatInput");
+    const chatSend = document.getElementById("chatSend");
+    const chatErr = document.getElementById("chatErr");
+    let chatStarted = false;
+
+    function addMsg(kind, text) {
+      if (!chatStarted) { chatBox.innerHTML = ""; chatStarted = true; }
+      const d = document.createElement("div");
+      d.className = "msg " + kind;
+      d.textContent = text;
+      chatBox.appendChild(d);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return d;
+    }
+
+    async function askChat(question) {
+      chatErr.textContent = "";
+      addMsg("q", question);
+      const pending = addMsg("a", "답변을 작성하는 중입니다…");
+      chatSend.disabled = true;
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        const data = await res.json();
+        pending.textContent = res.ok ? data.answer : (data.detail || "오류가 발생했습니다.");
+      } catch (e) {
+        pending.textContent = "서버에 연결할 수 없습니다.";
+      }
+      chatSend.disabled = false;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function sendChat() {
+      const q = chatInput.value.trim();
+      if (!q) { chatErr.textContent = "질문을 먼저 입력해 주세요"; return; }
+      chatInput.value = "";
+      askChat(q);
+    }
+
+    chatSend.addEventListener("click", sendChat);
+    chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
+    chatInput.addEventListener("input", () => { chatErr.textContent = ""; });
+    document.querySelectorAll(".chip").forEach(b =>
+      b.addEventListener("click", () => askChat(b.dataset.q))
+    );
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>
